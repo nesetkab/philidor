@@ -27,6 +27,7 @@ class GameRunner:
             or len(self.board.move_stack) > 300
         ):
             self.play_turn()
+        print(f"moves {len(self.board.move_stack)}")
         return self.board.result(claim_draw=True)
 
 
