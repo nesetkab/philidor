@@ -95,13 +95,24 @@ class Engine:
         self._send("isready")
         self._read_until("readyok")
 
-    def analyze(self, board, depth=None, movetime=None):
-        if (depth is None) == (movetime is None):
-            raise ValueError("naming both depth & movetime in uci.analyze")
+    def analyze(self, board, depth=None, movetime=None, nodes=None):
+        given = [depth, movetime, nodes]
+        if sum(x is not None for x in given) == 0:
+            raise ValueError("naming neither depth, movetime, nor nodes in uci.analyze")
+        elif sum(x is not None for x in given) > 1:
+            raise ValueError(
+                "naming multiple of depth, movetime, or nodes in uci.analyze"
+            )
 
         self._send("position fen " + board.fen())
         self._sync()
-        self._send(f"go movetime {movetime}" if depth is None else f"go depth {depth}")
+        if depth is not None:
+            command = f"go depth {depth}"
+        elif movetime is not None:
+            command = f"go movetime {movetime}"
+        else:
+            command = f"go nodes {nodes}"
+        self._send(command)
 
         last_info = None
         while True:
@@ -112,12 +123,14 @@ class Engine:
                 bestmove_line = line
                 break
 
-        if last_info is None:
-            raise EngineError("no info lines")
         return self._build_result(last_info, bestmove_line, board)
 
     def _build_result(self, last_info, bestmove_line, board):
-        info = self._parse_info(last_info)
+        info = (
+            (None, None, None, None)
+            if last_info is None
+            else self._parse_info(last_info)
+        )
         tokens = bestmove_line.split()
         if len(tokens) >= 2 and tokens[1] != "(none)":
             bestmove = chess.Move.from_uci(tokens[1])
