@@ -113,3 +113,25 @@ def test_render_includes_rates_and_terminations(tmp_path):
     assert "40.0%" in text
     assert "threefold_repetition 1" in text
     assert "Draw rate by colour" in text
+
+
+def test_summarise_records_engine_provenance(tmp_path):
+    board = FastBoard()
+    board.push_san("e4")
+    path = tmp_path / "level1.pgn"
+    write_game(
+        board,
+        "1/2-1/2",
+        path,
+        headers={
+            "PhilidorColor": "white",
+            "PhilidorEngine": "Stockfish 18",
+            "OpponentEngine": "Lc0 v0.32.1",
+            "PhilidorDepth": 10,
+        },
+    )
+    summary = report.summarise(path, 1, "maia1100")
+    assert summary.setups[("Stockfish 18", "Lc0 v0.32.1", "10")] == 1
+    text = report.render([summary], {1: "Maia 1100 (nodes=1)"})
+    assert "## Engines" in text
+    assert "Lc0 v0.32.1" in text

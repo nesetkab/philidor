@@ -26,3 +26,9 @@ def test_wdl_perspective():
         assert w is not None
         assert b is not None
         assert w[0] > b[0] and b[2] > w[2]
+
+
+@pytest.mark.skipif(path is None, reason="stockfish not installed !")
+def test_engine_records_its_name_from_the_handshake():
+    with Engine(path, {}) as e:
+        assert e.name.startswith("Stockfish")

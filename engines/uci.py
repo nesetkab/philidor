@@ -49,6 +49,7 @@ class Engine:
         self.queue = queue.Queue()
         self.alive = True
         self.closed = False
+        self.name = "unknown"
         threading.Thread(target=self._reader, daemon=True).start()
         self._handshake()
         for name, value in options.items():
@@ -89,7 +90,9 @@ class Engine:
 
     def _handshake(self):
         self._send("uci")
-        self._read_until("uciok")
+        for line in self._read_until("uciok"):
+            if line.startswith("id name "):
+                self.name = line[len("id name ") :]
 
     def _sync(self):
         self._send("isready")

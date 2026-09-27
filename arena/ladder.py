@@ -159,10 +159,11 @@ class LevelRunner:
             **kwargs,
         )
         result = runner.loop()
-        self._write(runner, spec, result)
+        names = (philidor_engine.name, opponent_engine.name)
+        self._write(runner, spec, result, names)
         return result
 
-    def _write(self, runner, spec, result):
+    def _write(self, runner, spec, result, names):
         colour = "white" if spec.philidor_is_white else "black"
         label = opponent_label(self.level)
         headers = {
@@ -176,6 +177,8 @@ class LevelRunner:
             "PhilidorLevel": self.level.number,
             "PhilidorDepth": self.depth,
             "Opponent": self.level.name,
+            "PhilidorEngine": names[0],
+            "OpponentEngine": names[1],
             "ECO": spec.opening.eco,
             "OpeningName": spec.opening.name,
             "OpeningPlies": runner.opening_plies,

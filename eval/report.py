@@ -59,6 +59,7 @@ class LevelSummary:
     by_colour: dict
     plies: list
     halfmove_clocks: list
+    setups: collections.Counter
 
     @property
     def draw_rate(self):
@@ -87,9 +88,17 @@ def summarise(path, number, name):
     }
     plies = []
     clocks = []
+    setups = collections.Counter()
     for game in read_games(path):
         kind = outcome(game)
         counts[kind] += 1
+        setups[
+            (
+                game.headers.get("PhilidorEngine", "unknown"),
+                game.headers.get("OpponentEngine", "unknown"),
+                game.headers.get("PhilidorDepth", "?"),
+            )
+        ] += 1
         terminations[game.headers.get("Termination", "unknown")] += 1
         colour = game.headers.get("PhilidorColor", "")
         if colour in by_colour:
@@ -111,6 +120,7 @@ def summarise(path, number, name):
         by_colour=by_colour,
         plies=plies,
         halfmove_clocks=clocks,
+        setups=setups,
     )
 
 
@@ -192,6 +202,18 @@ def render(summaries, labels):
             f"| {_median(summary.plies)} "
             f"| {_median(summary.halfmove_clocks)} "
             f"| {breakdown or '-'} |"
+        )
+    lines.append("")
+    lines.append("## Engines")
+    lines.append("")
+    lines.append("| Level | Philidor engine | Philidor depth | Opponent engine |")
+    lines.append("|---|---|---|---|")
+    for summary in summaries:
+        if not summary.setups:
+            continue
+        philidor, opponent, depth = summary.setups.most_common(1)[0][0]
+        lines.append(
+            f"| {summary.number} | {philidor} | {depth} | {opponent} |"
         )
     lines.append("")
     return "\n".join(lines)
