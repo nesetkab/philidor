@@ -8,6 +8,7 @@ import chess.pgn
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GAMES_DIR = ROOT / "games"
+REPORTS_DIR = ROOT / "reports"
 Z_95 = 1.959963984540054
 
 
@@ -258,7 +259,7 @@ def main():
     from arena.ladder import LEVELS, opponent_label
 
     parser = argparse.ArgumentParser(description="Report Philidor baseline draw rates")
-    parser.add_argument("--out", default=str(GAMES_DIR / "report.md"))
+    parser.add_argument("--out", default=str(REPORTS_DIR / "phase1.md"))
     args = parser.parse_args()
 
     summaries = collect(LEVELS)
@@ -268,8 +269,10 @@ def main():
     labels = {level.number: opponent_label(level) for level in LEVELS}
     text = render(summaries, labels)
     print(text)
-    pathlib.Path(args.out).write_text(text + "\n")
-    print(f"written to {args.out}")
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text + "\n")
+    print(f"written to {out}")
 
 
 if __name__ == "__main__":
