@@ -18,7 +18,16 @@ Bot: `bots/baseline_wdl.py`. For every legal move it queries Stockfish WDL one p
 | 2 | Maia 1500 (nodes=1) | 100 | 64 | 0 | 36 | 0 | 64.0% | 54.2% to 72.7% |
 | 3 | Maia 1900 (nodes=1) | 100 | 62 | 0 | 38 | 0 | 62.0% | 52.2% to 70.9% |
 | 4 | Stockfish (depth=8) | 100 | 89 | 0 | 10 | 1 | 89.0% | 81.4% to 93.7% |
-| 5 | Stockfish (depth=20) | 2 | 2 | 0 | 0 | 0 | 100.0% | 34.2% to 100.0% |
+| 5 | Stockfish (depth=20) | 100 | 20 | 0 | 80 | 0 | 20.0% | 13.3% to 28.9% |
+
+## Findings
+
+- The bot won 0 of 500 games.
+- Lowest draw rate is level 5, Stockfish (depth=20), at 20.0%.
+- Highest draw rate is level 4, Stockfish (depth=8), at 89.0%.
+- Those two Wilson intervals do not overlap, so the gap is larger than sampling noise at this sample size.
+- The peak is an interior level, so both the weakest and the strongest opponent on this ladder draw less often than level 4. The objective is hard at both ends, not simply harder as the opponent gets stronger.
+- Games ending by the fifty-move rule or the ply cap, which is the shuffling signature, peak at level 4 with 10 of 100.
 
 ## Draw rate by colour
 
@@ -28,7 +37,7 @@ Bot: `bots/baseline_wdl.py`. For every legal move it queries Stockfish WDL one p
 | 2 | 60.0% | 68.0% |
 | 3 | 56.0% | 68.0% |
 | 4 | 84.0% | 94.0% |
-| 5 | 100.0% | - |
+| 5 | 24.0% | 16.0% |
 
 ## Game length and terminations
 
@@ -38,7 +47,7 @@ Bot: `bots/baseline_wdl.py`. For every legal move it queries Stockfish WDL one p
 | 2 | 108 | 8 | threefold_repetition 51, checkmate 36, stalemate 7, insufficient_material 6 |
 | 3 | 92 | 8 | threefold_repetition 51, checkmate 38, insufficient_material 7, stalemate 4 |
 | 4 | 122 | 11 | threefold_repetition 65, insufficient_material 14, checkmate 10, fifty_move_rule 9, ply_cap 1, stalemate 1 |
-| 5 | 84 | 10 | threefold_repetition 2 |
+| 5 | 82 | 2 | checkmate 80, threefold_repetition 17, insufficient_material 3 |
 
 ## Engines
 

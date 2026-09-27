@@ -142,6 +142,60 @@ def _median(values):
     return f"{statistics.median(values):.0f}" if values else "-"
 
 
+def intervals_overlap(first, second):
+    return first[0] <= second[1] and second[0] <= first[1]
+
+
+def shuffle_count(summary):
+    return summary.terminations["fifty_move_rule"] + summary.terminations["ply_cap"]
+
+
+def findings(summaries, labels):
+    lines = []
+    if not summaries:
+        return lines
+    games = sum(summary.total for summary in summaries)
+    wins = sum(summary.counts["win"] for summary in summaries)
+    lowest = min(summaries, key=lambda summary: summary.draw_rate)
+    highest = max(summaries, key=lambda summary: summary.draw_rate)
+    lines.append(f"- The bot won {wins} of {games} games.")
+    lines.append(
+        f"- Lowest draw rate is level {lowest.number}, "
+        f"{labels.get(lowest.number, lowest.name)}, at {_percent(lowest.draw_rate)}."
+    )
+    lines.append(
+        f"- Highest draw rate is level {highest.number}, "
+        f"{labels.get(highest.number, highest.name)}, at {_percent(highest.draw_rate)}."
+    )
+    if lowest is not highest:
+        if intervals_overlap(lowest.interval, highest.interval):
+            lines.append(
+                "- Those two Wilson intervals overlap, so this sample does not "
+                "separate them."
+            )
+        else:
+            lines.append(
+                "- Those two Wilson intervals do not overlap, so the gap is "
+                "larger than sampling noise at this sample size."
+            )
+    ordered = sorted(summaries, key=lambda summary: summary.number)
+    ends = (ordered[0].number, ordered[-1].number)
+    if len(ordered) >= 3 and highest.number not in ends:
+        lines.append(
+            f"- The peak is an interior level, so both the weakest and the "
+            f"strongest opponent on this ladder draw less often than level "
+            f"{highest.number}. The objective is hard at both ends, not simply "
+            f"harder as the opponent gets stronger."
+        )
+    worst = max(summaries, key=shuffle_count)
+    lines.append(
+        f"- Games ending by the fifty-move rule or the ply cap, which is the "
+        f"shuffling signature, peak at level {worst.number} with "
+        f"{shuffle_count(worst)} of {worst.total}."
+    )
+    return lines
+
+
 def render(summaries, labels):
     lines = []
     lines.append("# Philidor phase one: baseline draw rates")
@@ -196,6 +250,10 @@ def render(summaries, labels):
             f"| {_percent(summary.draw_rate)} "
             f"| {_percent(low)} to {_percent(high)} |"
         )
+    lines.append("")
+    lines.append("## Findings")
+    lines.append("")
+    lines.extend(findings(summaries, labels))
     lines.append("")
     lines.append("## Draw rate by colour")
     lines.append("")
