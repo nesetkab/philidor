@@ -151,9 +151,29 @@ def render(summaries, labels):
         "No search, no learning."
     )
     lines.append("")
+    lines.append("## Method")
+    lines.append("")
     lines.append(
-        "Draw rate denominators include every game played, so unfinished games "
-        "at the ply cap count against the rate rather than being dropped."
+        "- Openings come from `data/balanced_openings.tsv`, the 1167 ECO lines of "
+        "6 to 12 plies that Stockfish scores within 50 centipawns at depth 12."
+    )
+    lines.append(
+        "- Every opening is played twice, once with Philidor as white and once as "
+        "black, so colour advantage cannot skew a level."
+    )
+    lines.append(
+        "- A draw is adjudicated only when a threefold repetition or the "
+        "fifty-move rule has actually been reached. python-chess reports a "
+        "claimable draw one move early, which would score a position as drawn "
+        "even when the side to move is winning and would never repeat."
+    )
+    lines.append(
+        "- Games are capped at 300 plies. A capped game is recorded as unfinished "
+        "and stays in the denominator, so it counts against the draw rate rather "
+        "than being dropped."
+    )
+    lines.append(
+        "- Win and loss are read from the Philidor side, not from white."
     )
     lines.append("")
     lines.append("## Results")
@@ -215,6 +235,19 @@ def render(summaries, labels):
         lines.append(
             f"| {summary.number} | {philidor} | {depth} | {opponent} |"
         )
+    lines.append("")
+    lines.append("## Reproduce")
+    lines.append("")
+    lines.append("```")
+    lines.append("python -m arena.book")
+    lines.append("python -m arena.ladder --games 100 --workers 6 --seed 0 --depth 10")
+    lines.append("python -m eval.report")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "The first command regenerates the balanced book and is only needed if "
+        "`data/balanced_openings.tsv` is missing."
+    )
     lines.append("")
     return "\n".join(lines)
 
