@@ -71,23 +71,19 @@ def maia_weights(rating):
     return path
 
 
-def open_philidor_engine():
-    return Engine(
-        stockfish_path(), {"UCI_ShowWDL": "true"}, timeout=ENGINE_TIMEOUT
-    )
+def open_philidor_engine(timeout=ENGINE_TIMEOUT):
+    return Engine(stockfish_path(), {"UCI_ShowWDL": "true"}, timeout=timeout)
 
 
-def open_opponent_engine(level):
+def open_opponent_engine(level, timeout=ENGINE_TIMEOUT):
     if level.kind == "maia":
         args = [
             lc0_path(),
             f"--weights={maia_weights(level.setting)}",
             "--backend=blas",
         ]
-        return Engine(args, {}, timeout=ENGINE_TIMEOUT), {"nodes": 1}
-    return Engine(stockfish_path(), {}, timeout=ENGINE_TIMEOUT), {
-        "depth": level.setting
-    }
+        return Engine(args, {}, timeout=timeout), {"nodes": 1}
+    return Engine(stockfish_path(), {}, timeout=timeout), {"depth": level.setting}
 
 
 def opponent_label(level):
@@ -105,10 +101,13 @@ class GameSpec:
 
 
 class LevelRunner:
-    def __init__(self, level, depth=PHILIDOR_DEPTH, max_plies=None):
+    def __init__(
+        self, level, depth=PHILIDOR_DEPTH, max_plies=None, timeout=ENGINE_TIMEOUT
+    ):
         self.level = level
         self.depth = depth
         self.max_plies = max_plies
+        self.timeout = timeout
         self.local = threading.local()
         self.engines = []
         self.engines_lock = threading.Lock()
@@ -122,8 +121,8 @@ class LevelRunner:
             if philidor_engine.alive and opponent_engine.alive:
                 return cached
             self._discard(cached)
-        philidor_engine = open_philidor_engine()
-        opponent_engine, opponent_kw = open_opponent_engine(self.level)
+        philidor_engine = open_philidor_engine(self.timeout)
+        opponent_engine, opponent_kw = open_opponent_engine(self.level, self.timeout)
         cached = (philidor_engine, opponent_engine, opponent_kw)
         with self.engines_lock:
             self.engines.append(philidor_engine)
@@ -226,12 +225,29 @@ def build_specs(level, games, seed):
     return specs
 
 
-def run_level(level, games=100, workers=5, seed=0, depth=PHILIDOR_DEPTH, max_plies=None):
+def run_level(
+    level,
+    games=100,
+    workers=5,
+    seed=0,
+    depth=PHILIDOR_DEPTH,
+    max_plies=None,
+    timeout=ENGINE_TIMEOUT,
+    append=False,
+    only_indices=None,
+):
     GAMES_DIR.mkdir(exist_ok=True)
-    if level.pgn_path.exists():
+    if level.pgn_path.exists() and not append:
         level.pgn_path.unlink()
     specs = build_specs(level, games, seed)
-    runner = LevelRunner(level, depth=depth, max_plies=max_plies)
+    if only_indices is not None:
+        wanted = set(only_indices)
+        specs = [spec for spec in specs if spec.index in wanted]
+        if not specs:
+            raise ValueError(f"no specs match indices {sorted(wanted)}")
+    runner = LevelRunner(
+        level, depth=depth, max_plies=max_plies, timeout=timeout
+    )
     done = 0
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -266,7 +282,16 @@ def main():
     parser.add_argument("--depth", type=int, default=PHILIDOR_DEPTH)
     parser.add_argument("--max-plies", type=int, default=None)
     parser.add_argument("--levels", default="1,2,3,4,5")
+    parser.add_argument("--timeout", type=float, default=ENGINE_TIMEOUT)
+    parser.add_argument("--append", action="store_true")
+    parser.add_argument("--only-indices", default=None)
     args = parser.parse_args()
+
+    only_indices = None
+    if args.only_indices is not None:
+        only_indices = [
+            int(part) for part in args.only_indices.split(",") if part.strip()
+        ]
 
     numbers = [int(part) for part in args.levels.split(",") if part.strip()]
     for number in numbers:
@@ -278,6 +303,9 @@ def main():
             seed=args.seed,
             depth=args.depth,
             max_plies=args.max_plies,
+            timeout=args.timeout,
+            append=args.append,
+            only_indices=only_indices,
         )
         print(
             f"level {level.number} {level.name} complete: "

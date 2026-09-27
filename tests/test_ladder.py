@@ -91,3 +91,40 @@ def test_run_level_writes_a_readable_pgn(tmp_path, monkeypatch):
         assert game.headers["Termination"]
         assert int(game.headers["TotalPlies"]) <= 10
         assert game.headers["ECO"]
+
+
+def test_only_indices_selects_a_single_game(tmp_path, monkeypatch):
+    monkeypatch.setattr(ladder, "GAMES_DIR", tmp_path)
+    level = ladder.level_by_number(1)
+    specs = ladder.build_specs(level, games=100, seed=0)
+    wanted = [spec for spec in specs if spec.index == 61]
+    assert len(wanted) == 1
+    assert wanted[0].philidor_is_white is False
+
+
+def test_only_indices_rejects_an_index_outside_the_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(ladder, "GAMES_DIR", tmp_path)
+    level = ladder.level_by_number(1)
+    with pytest.raises(ValueError):
+        ladder.run_level(level, games=4, only_indices=[999])
+
+
+@requires_stockfish
+def test_append_adds_to_an_existing_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(ladder, "GAMES_DIR", tmp_path)
+    level = ladder.level_by_number(4)
+    ladder.run_level(level, games=2, workers=1, seed=0, depth=4, max_plies=6)
+    first = level.pgn_path.read_text().count("[Event ")
+    ladder.run_level(
+        level,
+        games=2,
+        workers=1,
+        seed=0,
+        depth=4,
+        max_plies=6,
+        append=True,
+        only_indices=[0],
+    )
+    second = level.pgn_path.read_text().count("[Event ")
+    assert first == 2
+    assert second == 3
