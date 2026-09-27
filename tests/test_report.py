@@ -197,3 +197,26 @@ def test_findings_do_not_claim_an_interior_peak_when_the_peak_is_an_end():
     summaries = [_summary(1, 90, 10), _summary(4, 60, 40), _summary(5, 20, 80)]
     text = "\n".join(report.findings(summaries, {}))
     assert "interior level" not in text
+
+
+def test_render_comparison_puts_challengers_side_by_side():
+    by_challenger = {
+        "baseline_wdl": [_summary(1, 48, 52)],
+        "lc0_contempt": [_summary(1, 70, 30)],
+    }
+    text = report.render_comparison(by_challenger, {1: "Maia 1100"})
+    assert "baseline_wdl" in text
+    assert "lc0_contempt" in text
+    assert "48.0%" in text
+    assert "70.0%" in text
+    assert "n=100" in text
+
+
+def test_render_comparison_marks_missing_levels():
+    by_challenger = {
+        "baseline_wdl": [_summary(1, 48, 52), _summary(5, 20, 80)],
+        "lc0_contempt": [_summary(1, 70, 30)],
+    }
+    text = report.render_comparison(by_challenger, {})
+    assert text.count("| 5 |") == 1
+    assert " - |" in text

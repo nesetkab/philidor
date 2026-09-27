@@ -61,7 +61,7 @@ def main():
     parser.add_argument("paths", nargs="*", default=None)
     args = parser.parse_args()
 
-    paths = [pathlib.Path(p) for p in args.paths] or sorted(GAMES_DIR.glob("*.pgn"))
+    paths = [pathlib.Path(p) for p in args.paths] or sorted(GAMES_DIR.rglob("*.pgn"))
     if not paths:
         print(f"no PGN files found in {GAMES_DIR}")
         return 1

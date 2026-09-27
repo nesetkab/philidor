@@ -125,13 +125,52 @@ def summarise(path, number, name):
     )
 
 
-def collect(levels):
+def collect(levels, games_dir):
+    games_dir = pathlib.Path(games_dir)
     summaries = []
     for level in levels:
-        if not level.pgn_path.exists():
+        path = games_dir / level.filename()
+        if not path.exists():
             continue
-        summaries.append(summarise(level.pgn_path, level.number, level.name))
+        summaries.append(summarise(path, level.number, level.name))
     return summaries
+
+
+def render_comparison(by_challenger, labels):
+    lines = []
+    names = list(by_challenger)
+    lines.append("# Philidor ladder comparison")
+    lines.append("")
+    lines.append(
+        "Draw rate with a 95 percent Wilson interval, same ladder, same opening "
+        "book, same seeds."
+    )
+    lines.append("")
+    header = "| Level | Opponent | " + " | ".join(names) + " |"
+    lines.append(header)
+    lines.append("|---" * (2 + len(names)) + "|")
+    numbers = sorted(
+        {summary.number for summaries in by_challenger.values() for summary in summaries}
+    )
+    for number in numbers:
+        cells = []
+        opponent = str(number)
+        for name in names:
+            found = next(
+                (s for s in by_challenger[name] if s.number == number), None
+            )
+            if found is None:
+                cells.append("-")
+                continue
+            opponent = labels.get(number, found.name)
+            low, high = found.interval
+            cells.append(
+                f"{_percent(found.draw_rate)} ({_percent(low)}-{_percent(high)}, "
+                f"n={found.total})"
+            )
+        lines.append(f"| {number} | {opponent} | " + " | ".join(cells) + " |")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _percent(value):
@@ -318,13 +357,34 @@ def main():
 
     parser = argparse.ArgumentParser(description="Report Philidor baseline draw rates")
     parser.add_argument("--out", default=str(REPORTS_DIR / "phase1.md"))
+    parser.add_argument("--challenger", default="baseline_wdl")
+    parser.add_argument("--compare", default=None)
     args = parser.parse_args()
 
-    summaries = collect(LEVELS)
-    if not summaries:
-        print(f"no PGN files found in {GAMES_DIR}")
-        return
     labels = {level.number: opponent_label(level) for level in LEVELS}
+
+    if args.compare:
+        names = [part.strip() for part in args.compare.split(",") if part.strip()]
+        by_challenger = {}
+        for name in names:
+            found = collect(LEVELS, GAMES_DIR / name)
+            if found:
+                by_challenger[name] = found
+        if not by_challenger:
+            print(f"no PGN files found under {GAMES_DIR} for {names}")
+            return
+        text = render_comparison(by_challenger, labels)
+        print(text)
+        out = pathlib.Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text + "\n")
+        print(f"written to {out}")
+        return
+
+    summaries = collect(LEVELS, GAMES_DIR / args.challenger)
+    if not summaries:
+        print(f"no PGN files found in {GAMES_DIR / args.challenger}")
+        return
     text = render(summaries, labels)
     print(text)
     out = pathlib.Path(args.out)

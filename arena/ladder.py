@@ -29,9 +29,8 @@ class Level:
     setting: int
     represents: str
 
-    @property
-    def pgn_path(self):
-        return GAMES_DIR / f"level{self.number}_{self.name}.pgn"
+    def filename(self):
+        return f"level{self.number}_{self.name}.pgn"
 
 
 LEVELS = (
@@ -92,6 +91,78 @@ def opponent_label(level):
     return f"Stockfish (depth={level.setting})"
 
 
+LCZERO_DIR = pathlib.Path(os.path.expanduser("~/lc0-weights/lczero"))
+LCZERO_NET = "t1-256x10-distilled-swa-2432500.pb.gz"
+LC0_CONTEMPT_NODES = 400
+
+
+def lczero_weights(name=LCZERO_NET):
+    path = LCZERO_DIR / name
+    if not path.exists():
+        raise FileNotFoundError(f"missing lc0 network: {path}")
+    return path
+
+
+@dataclasses.dataclass(frozen=True)
+class Challenger:
+    name: str
+    label: str
+    open_engines: object
+    make_player: object
+
+
+def baseline_wdl_challenger(depth=PHILIDOR_DEPTH):
+    def open_engines(timeout):
+        return [open_philidor_engine(timeout)]
+
+    def make_player(engines, seed):
+        return BaselineWDLBot(engines[0], depth=depth, rng=random.Random(seed))
+
+    return Challenger(
+        name="baseline_wdl",
+        label=f"Philidor baseline_wdl (Stockfish WDL depth={depth})",
+        open_engines=open_engines,
+        make_player=make_player,
+    )
+
+
+def lc0_contempt_challenger(nodes=LC0_CONTEMPT_NODES, draw_score=1.0):
+    def open_engines(timeout):
+        args = [
+            lc0_path(),
+            f"--weights={lczero_weights()}",
+            "--backend=blas",
+        ]
+        options = {"DrawScore": f"{draw_score:.3f}", "UCI_ShowWDL": "true"}
+        return [Engine(args, options, timeout=timeout)]
+
+    def make_player(engines, seed):
+        return EngineWrapper(engines[0], nodes=nodes)
+
+    return Challenger(
+        name="lc0_contempt",
+        label=f"lc0 DrawScore={draw_score} (nodes={nodes})",
+        open_engines=open_engines,
+        make_player=make_player,
+    )
+
+
+CHALLENGERS = {
+    "baseline_wdl": baseline_wdl_challenger,
+    "lc0_contempt": lc0_contempt_challenger,
+}
+
+
+def challenger_by_name(name, **kwargs):
+    if name not in CHALLENGERS:
+        raise ValueError(f"unknown challenger {name}, pick from {sorted(CHALLENGERS)}")
+    return CHALLENGERS[name](**kwargs)
+
+
+def pgn_path(level, challenger_name):
+    return GAMES_DIR / challenger_name / level.filename()
+
+
 @dataclasses.dataclass
 class GameSpec:
     index: int
@@ -102,10 +173,11 @@ class GameSpec:
 
 class LevelRunner:
     def __init__(
-        self, level, depth=PHILIDOR_DEPTH, max_plies=None, timeout=ENGINE_TIMEOUT
+        self, level, challenger, max_plies=None, timeout=ENGINE_TIMEOUT
     ):
         self.level = level
-        self.depth = depth
+        self.challenger = challenger
+        self.path = pgn_path(level, challenger.name)
         self.max_plies = max_plies
         self.timeout = timeout
         self.local = threading.local()
@@ -117,22 +189,22 @@ class LevelRunner:
     def _engines(self):
         cached = getattr(self.local, "engines", None)
         if cached is not None:
-            philidor_engine, opponent_engine, opponent_kw = cached
-            if philidor_engine.alive and opponent_engine.alive:
+            challenger_engines, opponent_engine, opponent_kw = cached
+            if opponent_engine.alive and all(e.alive for e in challenger_engines):
                 return cached
             self._discard(cached)
-        philidor_engine = open_philidor_engine(self.timeout)
+        challenger_engines = self.challenger.open_engines(self.timeout)
         opponent_engine, opponent_kw = open_opponent_engine(self.level, self.timeout)
-        cached = (philidor_engine, opponent_engine, opponent_kw)
+        cached = (challenger_engines, opponent_engine, opponent_kw)
         with self.engines_lock:
-            self.engines.append(philidor_engine)
+            self.engines.extend(challenger_engines)
             self.engines.append(opponent_engine)
         self.local.engines = cached
         return cached
 
     def _discard(self, cached):
         self.local.engines = None
-        for engine in cached[:2]:
+        for engine in list(cached[0]) + [cached[1]]:
             with self.engines_lock:
                 if engine in self.engines:
                     self.engines.remove(engine)
@@ -142,10 +214,8 @@ class LevelRunner:
                 pass
 
     def play(self, spec):
-        philidor_engine, opponent_engine, opponent_kw = self._engines()
-        bot = BaselineWDLBot(
-            philidor_engine, depth=self.depth, rng=random.Random(spec.seed)
-        )
+        challenger_engines, opponent_engine, opponent_kw = self._engines()
+        bot = self.challenger.make_player(challenger_engines, spec.seed)
         opponent = EngineWrapper(opponent_engine, **opponent_kw)
         kwargs = {}
         if self.max_plies is not None:
@@ -158,23 +228,28 @@ class LevelRunner:
             **kwargs,
         )
         result = runner.loop()
-        names = (philidor_engine.name, opponent_engine.name)
+        names = (
+            ",".join(engine.name for engine in challenger_engines),
+            opponent_engine.name,
+        )
         self._write(runner, spec, result, names)
         return result
 
     def _write(self, runner, spec, result, names):
         colour = "white" if spec.philidor_is_white else "black"
         label = opponent_label(self.level)
+        mine = f"Philidor {self.challenger.name}"
         headers = {
-            "Event": "Philidor phase one baseline",
+            "Event": f"Philidor ladder {self.challenger.name}",
             "Site": "local",
             "Date": datetime.date.today().strftime("%Y.%m.%d"),
             "Round": spec.index + 1,
-            "White": "Philidor baseline_wdl" if spec.philidor_is_white else label,
-            "Black": label if spec.philidor_is_white else "Philidor baseline_wdl",
+            "White": mine if spec.philidor_is_white else label,
+            "Black": label if spec.philidor_is_white else mine,
             "PhilidorColor": colour,
             "PhilidorLevel": self.level.number,
-            "PhilidorDepth": self.depth,
+            "Challenger": self.challenger.name,
+            "ChallengerLabel": self.challenger.label,
             "Opponent": self.level.name,
             "PhilidorEngine": names[0],
             "OpponentEngine": names[1],
@@ -189,7 +264,7 @@ class LevelRunner:
         write_game(
             runner.board,
             result,
-            self.level.pgn_path,
+            self.path,
             headers=headers,
             lock=self.write_lock,
         )
@@ -227,18 +302,20 @@ def build_specs(level, games, seed):
 
 def run_level(
     level,
+    challenger=None,
     games=100,
     workers=5,
     seed=0,
-    depth=PHILIDOR_DEPTH,
     max_plies=None,
     timeout=ENGINE_TIMEOUT,
     append=False,
     only_indices=None,
 ):
-    GAMES_DIR.mkdir(exist_ok=True)
-    if level.pgn_path.exists() and not append:
-        level.pgn_path.unlink()
+    challenger = challenger or baseline_wdl_challenger()
+    path = pgn_path(level, challenger.name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and not append:
+        path.unlink()
     specs = build_specs(level, games, seed)
     if only_indices is not None:
         wanted = set(only_indices)
@@ -246,7 +323,7 @@ def run_level(
         if not specs:
             raise ValueError(f"no specs match indices {sorted(wanted)}")
     runner = LevelRunner(
-        level, depth=depth, max_plies=max_plies, timeout=timeout
+        level, challenger, max_plies=max_plies, timeout=timeout
     )
     done = 0
     try:
@@ -285,6 +362,9 @@ def main():
     parser.add_argument("--timeout", type=float, default=ENGINE_TIMEOUT)
     parser.add_argument("--append", action="store_true")
     parser.add_argument("--only-indices", default=None)
+    parser.add_argument("--challenger", default="baseline_wdl")
+    parser.add_argument("--nodes", type=int, default=LC0_CONTEMPT_NODES)
+    parser.add_argument("--draw-score", type=float, default=1.0)
     args = parser.parse_args()
 
     only_indices = None
@@ -293,15 +373,22 @@ def main():
             int(part) for part in args.only_indices.split(",") if part.strip()
         ]
 
+    if args.challenger == "lc0_contempt":
+        challenger = lc0_contempt_challenger(
+            nodes=args.nodes, draw_score=args.draw_score
+        )
+    else:
+        challenger = challenger_by_name(args.challenger, depth=args.depth)
+
     numbers = [int(part) for part in args.levels.split(",") if part.strip()]
     for number in numbers:
         level = level_by_number(number)
         total, failures = run_level(
             level,
+            challenger=challenger,
             games=args.games,
             workers=args.workers,
             seed=args.seed,
-            depth=args.depth,
             max_plies=args.max_plies,
             timeout=args.timeout,
             append=args.append,
@@ -309,7 +396,8 @@ def main():
         )
         print(
             f"level {level.number} {level.name} complete: "
-            f"{total - len(failures)}/{total} games written to {level.pgn_path}",
+            f"{total - len(failures)}/{total} games written to "
+            f"{pgn_path(level, challenger.name)}",
             flush=True,
         )
 

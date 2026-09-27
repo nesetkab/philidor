@@ -71,12 +71,13 @@ def test_maia_weights_reject_an_unknown_rating():
 def test_run_level_writes_a_readable_pgn(tmp_path, monkeypatch):
     monkeypatch.setattr(ladder, "GAMES_DIR", tmp_path)
     level = ladder.level_by_number(4)
+    challenger = ladder.baseline_wdl_challenger(depth=4)
     total, failures = ladder.run_level(
-        level, games=2, workers=2, seed=0, depth=4, max_plies=10
+        level, challenger=challenger, games=2, workers=2, seed=0, max_plies=10
     )
     assert total == 2
     assert failures == []
-    with open(level.pgn_path) as handle:
+    with open(ladder.pgn_path(level, challenger.name)) as handle:
         games = []
         while True:
             game = chess.pgn.read_game(handle)
@@ -113,18 +114,53 @@ def test_only_indices_rejects_an_index_outside_the_run(tmp_path, monkeypatch):
 def test_append_adds_to_an_existing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(ladder, "GAMES_DIR", tmp_path)
     level = ladder.level_by_number(4)
-    ladder.run_level(level, games=2, workers=1, seed=0, depth=4, max_plies=6)
-    first = level.pgn_path.read_text().count("[Event ")
+    challenger = ladder.baseline_wdl_challenger(depth=4)
+    path = ladder.pgn_path(level, challenger.name)
+    ladder.run_level(
+        level, challenger=challenger, games=2, workers=1, seed=0, max_plies=6
+    )
+    first = path.read_text().count("[Event ")
     ladder.run_level(
         level,
+        challenger=challenger,
         games=2,
         workers=1,
         seed=0,
-        depth=4,
         max_plies=6,
         append=True,
         only_indices=[0],
     )
-    second = level.pgn_path.read_text().count("[Event ")
+    second = path.read_text().count("[Event ")
     assert first == 2
     assert second == 3
+
+
+def test_challenger_registry_lists_both_baselines():
+    assert sorted(ladder.CHALLENGERS) == ["baseline_wdl", "lc0_contempt"]
+
+
+def test_challenger_by_name_rejects_unknown_names():
+    with pytest.raises(ValueError):
+        ladder.challenger_by_name("nonsense")
+
+
+def test_baseline_challenger_labels_its_depth():
+    challenger = ladder.baseline_wdl_challenger(depth=7)
+    assert challenger.name == "baseline_wdl"
+    assert "depth=7" in challenger.label
+
+
+def test_lc0_challenger_labels_its_draw_score():
+    challenger = ladder.lc0_contempt_challenger(nodes=256, draw_score=1.0)
+    assert challenger.name == "lc0_contempt"
+    assert "DrawScore=1.0" in challenger.label
+    assert "nodes=256" in challenger.label
+
+
+def test_pgn_paths_are_separated_by_challenger():
+    level = ladder.level_by_number(1)
+    first = ladder.pgn_path(level, "baseline_wdl")
+    second = ladder.pgn_path(level, "lc0_contempt")
+    assert first != second
+    assert first.name == second.name == "level1_maia1100.pgn"
+    assert first.parent.name == "baseline_wdl"
