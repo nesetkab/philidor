@@ -126,30 +126,53 @@ def baseline_wdl_challenger(depth=PHILIDOR_DEPTH):
     )
 
 
-def lc0_contempt_challenger(nodes=LC0_CONTEMPT_NODES, draw_score=1.0):
+LC0_PRESETS = {
+    "lc0_plain": ({}, "lc0 default"),
+    "lc0_drawscore": ({"DrawScore": "1.000"}, "lc0 DrawScore=1.0"),
+    "lc0_contempt": (
+        {
+            "ContemptMode": "play",
+            "Contempt": "-1000",
+            "WDLCalibrationElo": "2000",
+            "WDLEvalObjectivity": "0.000",
+        },
+        "lc0 Contempt=-1000 calibrated 2000",
+    ),
+}
+
+
+def lc0_challenger(preset="lc0_contempt", nodes=LC0_CONTEMPT_NODES, overrides=None):
+    if preset not in LC0_PRESETS:
+        raise ValueError(f"unknown lc0 preset {preset}, pick from {sorted(LC0_PRESETS)}")
+    base, description = LC0_PRESETS[preset]
+    options = dict(base)
+    options.update(overrides or {})
+    options["UCI_ShowWDL"] = "true"
+
     def open_engines(timeout):
-        args = [
-            lc0_path(),
-            f"--weights={lczero_weights()}",
-            "--backend=blas",
-        ]
-        options = {"DrawScore": f"{draw_score:.3f}", "UCI_ShowWDL": "true"}
-        return [Engine(args, options, timeout=timeout)]
+        args = [lc0_path(), f"--weights={lczero_weights()}", "--backend=blas"]
+        return [Engine(args, dict(options), timeout=timeout)]
 
     def make_player(engines, seed):
         return EngineWrapper(engines[0], nodes=nodes)
 
     return Challenger(
-        name="lc0_contempt",
-        label=f"lc0 DrawScore={draw_score} (nodes={nodes})",
+        name=preset,
+        label=f"{description} (nodes={nodes})",
         open_engines=open_engines,
         make_player=make_player,
     )
 
 
+def lc0_contempt_challenger(nodes=LC0_CONTEMPT_NODES, preset="lc0_contempt"):
+    return lc0_challenger(preset=preset, nodes=nodes)
+
+
 CHALLENGERS = {
     "baseline_wdl": baseline_wdl_challenger,
-    "lc0_contempt": lc0_contempt_challenger,
+    "lc0_plain": lambda **kw: lc0_challenger(preset="lc0_plain", **kw),
+    "lc0_drawscore": lambda **kw: lc0_challenger(preset="lc0_drawscore", **kw),
+    "lc0_contempt": lambda **kw: lc0_challenger(preset="lc0_contempt", **kw),
 }
 
 
@@ -373,10 +396,8 @@ def main():
             int(part) for part in args.only_indices.split(",") if part.strip()
         ]
 
-    if args.challenger == "lc0_contempt":
-        challenger = lc0_contempt_challenger(
-            nodes=args.nodes, draw_score=args.draw_score
-        )
+    if args.challenger.startswith("lc0"):
+        challenger = lc0_challenger(preset=args.challenger, nodes=args.nodes)
     else:
         challenger = challenger_by_name(args.challenger, depth=args.depth)
 

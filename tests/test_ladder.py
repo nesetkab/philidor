@@ -136,7 +136,12 @@ def test_append_adds_to_an_existing_file(tmp_path, monkeypatch):
 
 
 def test_challenger_registry_lists_both_baselines():
-    assert sorted(ladder.CHALLENGERS) == ["baseline_wdl", "lc0_contempt"]
+    assert sorted(ladder.CHALLENGERS) == [
+        "baseline_wdl",
+        "lc0_contempt",
+        "lc0_drawscore",
+        "lc0_plain",
+    ]
 
 
 def test_challenger_by_name_rejects_unknown_names():
@@ -151,8 +156,8 @@ def test_baseline_challenger_labels_its_depth():
 
 
 def test_lc0_challenger_labels_its_draw_score():
-    challenger = ladder.lc0_contempt_challenger(nodes=256, draw_score=1.0)
-    assert challenger.name == "lc0_contempt"
+    challenger = ladder.lc0_challenger(preset="lc0_drawscore", nodes=256)
+    assert challenger.name == "lc0_drawscore"
     assert "DrawScore=1.0" in challenger.label
     assert "nodes=256" in challenger.label
 
