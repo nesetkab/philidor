@@ -126,6 +126,8 @@ def baseline_wdl_challenger(depth=PHILIDOR_DEPTH):
     )
 
 
+LC0_BASE_OPTIONS = {"Threads": "1"}
+
 LC0_PRESETS = {
     "lc0_plain": ({}, "lc0 default"),
     "lc0_drawscore": ({"DrawScore": "1.000"}, "lc0 DrawScore=1.0"),
@@ -145,7 +147,8 @@ def lc0_challenger(preset="lc0_contempt", nodes=LC0_CONTEMPT_NODES, overrides=No
     if preset not in LC0_PRESETS:
         raise ValueError(f"unknown lc0 preset {preset}, pick from {sorted(LC0_PRESETS)}")
     base, description = LC0_PRESETS[preset]
-    options = dict(base)
+    options = dict(LC0_BASE_OPTIONS)
+    options.update(base)
     options.update(overrides or {})
     options["UCI_ShowWDL"] = "true"
 
